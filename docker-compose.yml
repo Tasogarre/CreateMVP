@@ -1,14 +1,23 @@
+# The definitive docker-compose.yml for a single-container CreateMVP deployment on Elest.io
 version: '3.8'
 
 services:
   createmvp:
+    # This correctly tells Docker to build using the Dockerfile in the project root.
     build: .
+    container_name: createmvp
+    # BEST PRACTICE: Ensures the service always restarts.
+    restart: always
     ports:
+      # Exposes the application's single port to the Docker network.
       - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_PATH=/app/data/app.db
+    # PROVEN METHOD: Use env_file to reliably pass all variables from the Elest.io UI.
+    env_file:
+      - ./.env
     volumes:
-      - ./data:/app/data
-      - ./.env:/app/.env
-    restart: unless-stopped
+      # PROVEN METHOD: Use a named volume to avoid all permission errors with the SQLite DB.
+      - app-data:/app/data
+
+# This defines the named volume for data persistence.
+volumes:
+  app-data:
