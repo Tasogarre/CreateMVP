@@ -1,0 +1,70 @@
+# .github/workflows/sync.yml
+name: Sync Fork with Upstream (Clean Room with Dockerfile Fix)
+on:
+  schedule:
+    - cron: '0 4 * * *' # Runs daily at 4 AM UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      # Step 1: Checkout your fork to get access to all your custom files.
+      - name: Checkout Fork for Custom Files
+        uses: actions/checkout@v4
+        with:
+          path: fork
+
+      # Step 2: Checkout the official repository into a clean directory.
+      - name: Checkout Upstream into Clean Room
+        uses: actions/checkout@v4
+        with:
+          repository: 'rohitg00/CreateMVP'
+          ref: main
+          path: upstream
+
+      # Step 3: Apply your custom configurations, overwriting the upstream files.
+      - name: Apply Custom Config and Clean Workflows
+        run: |
+          echo "Copying custom docker-compose.yml..."
+          cp fork/docker-compose.yml upstream/docker-compose.yml
+          
+          # THIS IS THE NEW, CRITICAL STEP:
+          # This ensures our corrected Dockerfile is always used for builds.
+          echo "Copying custom Dockerfile..."
+          cp fork/Dockerfile upstream/Dockerfile
+          
+          echo "Cleaning upstream workflows directory..."
+          rm -rf upstream/.github/workflows/*
+          
+          echo "Ensuring workflows directory exists and copying our own sync file..."
+          mkdir -p upstream/.github/workflows
+          cp fork/.github/workflows/sync.yml upstream/.github/workflows/sync.yml
+          
+      # Step 4: Commit and force-push the combined result to your fork.
+      - name: Push Cleaned Build to Fork
+        run: |
+          cd upstream
+          git config --global user.name 'GitHub Actions Sync'
+          git config --global user.email 'actions-sync@github.com'
+          git add -A
+          if ! git diff --staged --quiet; then
+            git commit -m "Build: Sync with upstream and apply custom configuration"
+          else
+            echo "No changes to commit. Fork is already up to date."
+          fi
+          git push -f "https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git" HEAD:main
+
+      # Step 5: If any step above fails, create an issue in YOUR fork.
+      - name: Create Issue on Failure
+        if: failure()
+        run: |
+          echo "An error occurred. Creating issue in ${{ github.repository }}."
+          cd ${{ github.workspace }}
+          gh issue create --repo ${{ github.repository }} --title "Automated Sync Failed: Manual Intervention Required" --body "The automated sync workflow failed. Please review the failed workflow run for logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
